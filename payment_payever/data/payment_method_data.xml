@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+
+    <!-- ═══════════════════════════════════════════════════════
+         Core payever payment methods
+         These records are created once on install (noupdate=1)
+         and are then linked to payever providers via post_init_hook.
+    ═══════════════════════════════════════════════════════ -->
+
+    <record id="payment_method_paypal" model="payment.method">
+        <field name="name">PayPal</field>
+        <field name="code">paypal</field>
+        <field name="sequence">10</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">partial</field>
+    </record>
+
+    <record id="payment_method_credit_card" model="payment.method">
+        <field name="name">Credit Card</field>
+        <field name="code">credit_card</field>
+        <field name="sequence">20</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">partial</field>
+    </record>
+
+    <record id="payment_method_direct_debit" model="payment.method">
+        <field name="name">Direct Debit</field>
+        <field name="code">direct_debit</field>
+        <field name="sequence">30</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">partial</field>
+    </record>
+
+    <record id="payment_method_instant_payment" model="payment.method">
+        <field name="name">Instant Payment</field>
+        <field name="code">instant_payment</field>
+        <field name="sequence">40</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">none</field>
+    </record>
+
+    <record id="payment_method_sofort" model="payment.method">
+        <field name="name">SOFORT Banking</field>
+        <field name="code">sofort</field>
+        <field name="sequence">50</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">none</field>
+    </record>
+
+    <record id="payment_method_santander_installment" model="payment.method">
+        <field name="name">Santander Installments Germany</field>
+        <field name="code">santander_installment</field>
+        <field name="sequence">60</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">partial</field>
+        <field name="supported_country_ids" eval="[Command.set([ref('base.de')])]"/>
+        <field name="supported_currency_ids" eval="[Command.set([ref('base.EUR')])]"/>
+    </record>
+
+    <record id="payment_method_santander_installment_at" model="payment.method">
+        <field name="name">Santander Installments Austria</field>
+        <field name="code">santander_installment_at</field>
+        <field name="sequence">61</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">partial</field>
+        <field name="supported_country_ids" eval="[Command.set([ref('base.at')])]"/>
+        <field name="supported_currency_ids" eval="[Command.set([ref('base.EUR')])]"/>
+    </record>
+
+    <record id="payment_method_santander_installment_no" model="payment.method">
+        <field name="name">Santander Installments Norway</field>
+        <field name="code">santander_installment_no</field>
+        <field name="sequence">62</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">partial</field>
+        <field name="supported_country_ids" eval="[Command.set([ref('base.no')])]"/>
+    </record>
+
+    <record id="payment_method_santander_installment_se" model="payment.method">
+        <field name="name">Santander Installments Sweden</field>
+        <field name="code">santander_installment_se</field>
+        <field name="sequence">63</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">partial</field>
+        <field name="supported_country_ids" eval="[Command.set([ref('base.se')])]"/>
+    </record>
+
+    <record id="payment_method_santander_installment_dk" model="payment.method">
+        <field name="name">Santander Installments Denmark</field>
+        <field name="code">santander_installment_dk</field>
+        <field name="sequence">64</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">partial</field>
+        <field name="supported_country_ids" eval="[Command.set([ref('base.dk')])]"/>
+    </record>
+
+    <record id="payment_method_santander_installment_nl" model="payment.method">
+        <field name="name">Santander Installments Netherlands</field>
+        <field name="code">santander_installment_nl</field>
+        <field name="sequence">65</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">partial</field>
+        <field name="supported_country_ids" eval="[Command.set([ref('base.nl')])]"/>
+        <field name="supported_currency_ids" eval="[Command.set([ref('base.EUR')])]"/>
+    </record>
+
+    <record id="payment_method_santander_installment_uk" model="payment.method">
+        <field name="name">Santander Installments United Kingdom</field>
+        <field name="code">santander_installment_uk</field>
+        <field name="sequence">66</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">partial</field>
+        <field name="supported_country_ids" eval="[Command.set([ref('base.gb')])]"/>
+    </record>
+
+    <record id="payment_method_santander_invoice_no" model="payment.method">
+        <field name="name">Santander Invoice Norway</field>
+        <field name="code">santander_invoice_no</field>
+        <field name="sequence">70</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">partial</field>
+        <field name="supported_country_ids" eval="[Command.set([ref('base.no')])]"/>
+    </record>
+
+    <record id="payment_method_wiretransfer" model="payment.method">
+        <field name="name">Wire Transfer</field>
+        <field name="code">wiretransfer</field>
+        <field name="sequence">80</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">none</field>
+    </record>
+
+    <record id="payment_method_ideal" model="payment.method">
+        <field name="name">iDEAL</field>
+        <field name="code">ideal</field>
+        <field name="sequence">90</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">none</field>
+        <field name="supported_country_ids" eval="[Command.set([ref('base.nl')])]"/>
+        <field name="supported_currency_ids" eval="[Command.set([ref('base.EUR')])]"/>
+    </record>
+
+    <record id="payment_method_bancontact" model="payment.method">
+        <field name="name">Bancontact</field>
+        <field name="code">bancontact</field>
+        <field name="sequence">100</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">none</field>
+        <field name="supported_country_ids" eval="[Command.set([ref('base.be')])]"/>
+        <field name="supported_currency_ids" eval="[Command.set([ref('base.EUR')])]"/>
+    </record>
+
+    <record id="payment_method_apple_pay" model="payment.method">
+        <field name="name">Apple Pay</field>
+        <field name="code">apple_pay</field>
+        <field name="sequence">110</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">True</field>
+        <field name="support_refund">partial</field>
+    </record>
+
+    <record id="payment_method_google_pay" model="payment.method">
+        <field name="name">Google Pay</field>
+        <field name="code">google_pay</field>
+        <field name="sequence">120</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">True</field>
+        <field name="support_refund">partial</field>
+    </record>
+
+    <record id="payment_method_openbank_pay_bnpl_de" model="payment.method">
+        <field name="name">Openbank Pay BNPL Germany</field>
+        <field name="code">openbank_pay_bnpl_de</field>
+        <field name="sequence">130</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">partial</field>
+        <field name="supported_country_ids" eval="[Command.set([ref('base.de')])]"/>
+        <field name="supported_currency_ids" eval="[Command.set([ref('base.EUR')])]"/>
+    </record>
+
+    <record id="payment_method_ivy" model="payment.method">
+        <field name="name">IVY</field>
+        <field name="code">ivy</field>
+        <field name="sequence">140</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">none</field>
+    </record>
+
+    <record id="payment_method_swish" model="payment.method">
+        <field name="name">Swish</field>
+        <field name="code">swish</field>
+        <field name="sequence">150</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">none</field>
+        <field name="supported_country_ids" eval="[Command.set([ref('base.se')])]"/>
+    </record>
+
+    <record id="payment_method_vipps" model="payment.method">
+        <field name="name">Vipps</field>
+        <field name="code">vipps</field>
+        <field name="sequence">160</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">partial</field>
+        <field name="supported_country_ids" eval="[Command.set([ref('base.no')])]"/>
+    </record>
+
+    <record id="payment_method_trustly" model="payment.method">
+        <field name="name">Trustly</field>
+        <field name="code">trustly</field>
+        <field name="sequence">170</field>
+        <field name="support_tokenization">False</field>
+        <field name="support_express_checkout">False</field>
+        <field name="support_refund">partial</field>
+        <field name="supported_country_ids" eval="[Command.set([ref('base.se'), ref('base.fi')])]"/>
+    </record>
+
+</odoo>

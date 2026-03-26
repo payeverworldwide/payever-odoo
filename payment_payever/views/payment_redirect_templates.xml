@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!--
+        Redirect template for the payever checkout.
+
+        payever requires a plain GET redirect to the checkout URL. Odoo's
+        default payment.redirect_form generates a POST form, so we override it
+        for payever with a simple JS-driven redirect.
+
+        Rendering context provides:
+            api_url  – the payever checkout redirect_url
+    -->
+    <template id="payever_redirect_form">
+        <html>
+            <head>
+                <meta charset="utf-8"/>
+                <meta http-equiv="refresh" t-attf-content="0;url=#{api_url}"/>
+                <title>Redirecting to payever…</title>
+                <style>
+                    body {
+                        font-family: sans-serif;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        height: 100vh;
+                        margin: 0;
+                        background: #f9f9f9;
+                    }
+                    .box {
+                        text-align: center;
+                        padding: 2rem;
+                        background: #fff;
+                        border-radius: 8px;
+                        box-shadow: 0 2px 12px rgba(0,0,0,.08);
+                        max-width: 420px;
+                        width: 100%;
+                    }
+                    .spinner {
+                        width: 40px; height: 40px;
+                        border: 4px solid #e9e9e9;
+                        border-top-color: #1d2952;
+                        border-radius: 50%;
+                        animation: spin .8s linear infinite;
+                        margin: 0 auto 1.2rem;
+                    }
+                    @keyframes spin { to { transform: rotate(360deg); } }
+                    .btn {
+                        display: inline-block;
+                        margin-top: 1rem;
+                        padding: .6rem 1.4rem;
+                        background: #1d2952;
+                        color: #fff;
+                        border-radius: 4px;
+                        text-decoration: none;
+                        font-size: .9rem;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="box">
+                    <div class="spinner"/>
+                    <p>Redirecting you to the payever secure checkout…</p>
+                    <a t-att-href="api_url" class="btn">
+                        Proceed to payment →
+                    </a>
+                </div>
+                <script>
+                    (function () {
+                        var url = "<t t-esc='api_url'/>";
+                        if (url) { window.location.replace(url); }
+                    }());
+                </script>
+            </body>
+        </html>
+    </template>
+
+</odoo>

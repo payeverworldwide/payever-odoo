@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ══════════════════════════════════════════════════
+         Provider form view – payever credentials tab
+    ══════════════════════════════════════════════════ -->
+    <record id="payment_provider_form_payever" model="ir.ui.view">
+        <field name="name">payment.provider.form.payever</field>
+        <field name="model">payment.provider</field>
+        <field name="inherit_id" ref="payment.payment_provider_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="payever" attrs="{'invisible': [('code', '!=', 'payever')]}">
+                    <group>
+                        <group string="Credentials" name="payever_credentials">
+                            <field
+                                name="payever_client_id"
+                                attrs="{'required': [('code', '=', 'payever')]}"
+                                password="True"
+                            />
+                            <field
+                                name="payever_client_secret"
+                                attrs="{'required': [('code', '=', 'payever')]}"
+                                password="True"
+                            />
+                            <field name="payever_business_uuid"/>
+                        </group>
+                        <group string="Configuration" name="payever_config">
+                            <field name="payever_debug_logging"/>
+                        </group>
+                    </group>
+                    <div class="o_payever_actions mt-3"
+                         attrs="{'invisible': [('code', '!=', 'payever')]}">
+                        <button
+                            string="Sync Payment Methods from payever"
+                            name="action_sync_payever_methods"
+                            type="object"
+                            class="btn btn-secondary"
+                            icon="fa-refresh"
+                            confirm="This will fetch and create payment methods from your payever account. Continue?"
+                        />
+                    </div>
+                    <div class="alert alert-info mt-3"
+                         attrs="{'invisible': [('code', '!=', 'payever')]}">
+                        <strong>API URLs:</strong><br/>
+                        Sandbox: <code>https://proxy.staging.devpayever.com</code><br/>
+                        Live: <code>https://proxy.payever.org</code><br/><br/>
+                        Find your credentials in your payever account under
+                        <strong>Connect &gt; Shopsystems &gt; API</strong>.
+                    </div>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+
+</odoo>
