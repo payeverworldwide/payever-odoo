@@ -1,18 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <!-- Show payever-specific fields in the transaction form -->
     <record id="payment_transaction_form_payever" model="ir.ui.view">
         <field name="name">payment.transaction.form.payever</field>
         <field name="model">payment.transaction</field>
         <field name="inherit_id" ref="payment.payment_transaction_form"/>
         <field name="arch" type="xml">
             <xpath expr="//field[@name='provider_reference']" position="after">
-                <field
-                    name="payever_payment_id"
-                    attrs="{'invisible': [('provider_code', '!=', 'payever')]}"
-                    readonly="1"
-                />
+                <field name="payever_payment_id"
+                       invisible="provider_code != 'payever'"
+                       readonly="1"/>
             </xpath>
         </field>
     </record>

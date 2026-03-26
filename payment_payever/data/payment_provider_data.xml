@@ -3,8 +3,10 @@
 
     <!--
         Default payever payment provider record.
-        Administrators should fill in their Client ID and Client Secret
-        via the backend before activating the provider.
+        Created once on install (noupdate="1").
+        The logo is applied programmatically by post_init_hook.
+        Fill in Client ID, Client Secret and Business UUID in the backend
+        before activating this provider.
     -->
     <record id="payment_provider_payever" model="payment.provider">
         <field name="name">payever</field>

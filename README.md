@@ -1,101 +1,122 @@
-# payever Odoo Integration
+# payever Payments for Odoo
 
-Odoo 19 payment provider module for [payever](https://www.payever.org/) — accepts
-PayPal, credit card, BNPL, Santander installments, Sofort, iDEAL and 30+ more
-payment options via the [payever REST API v3](https://docs.payever.org/api/payments/v3).
-
----
-
-## Modules
-
-| Module | Description |
-|--------|-------------|
-| `payment_payever` | Core eCommerce payment provider (redirect checkout flow) |
+Accept payments via payever directly in your Odoo 19.0 store — credit card, PayPal, BNPL, Santander Installments, iDEAL, Bancontact, Apple Pay, Google Pay and many more.
 
 ---
 
 ## Features
 
-- **OAuth 2.0 authentication** — tokens are fetched automatically and cached with auto-refresh
-- **Redirect checkout** — customers are sent to the payever hosted checkout page
-- **Notification handling** — async `POST` webhook updates transaction state
-- **Refunds** — partial and full refunds via `POST /api/payment/refund/{id}`
-- **Captures** — shipping-goods capture via `POST /api/payment/shipping-goods/{id}`
-- **Cancellations** — void/cancel via `POST /api/payment/cancel/{id}`
-- **Signature verification** — optional `x-payever-signature` HMAC-SHA256 check
-- **Payment method sync** — one-click button to fetch live payment options from your account
-- **20+ bundled payment methods** — PayPal, Credit Card, Santander Installments, iDEAL, Bancontact, Apple Pay, etc.
-
----
-
-## Installation
-
-1. Copy the `payment_payever` directory into your Odoo `addons` path.
-2. Update your app list and install **payever Payments**.
-3. Navigate to **Accounting → Configuration → Payment Providers**.
-4. Open the **payever** provider record and fill in:
-   - **Client ID** — 32-character hex from your payever account
-   - **Client Secret** — 256-bit secret
-   - **Business UUID** *(optional)* — needed for listing payment options
-5. Set the provider **State** to *Test* (sandbox) or *Enabled* (live).
-6. Click **Sync Payment Methods from payever** to fetch your enabled options.
-
-### API URLs
-
-| Environment | Base URL |
-|-------------|----------|
-| Sandbox     | `https://proxy.staging.devpayever.com` |
-| Live        | `https://proxy.payever.org` |
-
-### Credentials
-
-- **Live**: Generate API keys in your payever account under **Connect → Shopsystems → API**.
-- **Test**: Use the staging credentials from [https://docs.payever.org/resources/test-credentials](https://docs.payever.org/resources/test-credentials).
-
----
-
-## Payment Flow
-
-```
-Customer → Odoo Checkout
-    → POST /api/v3/payment   (create payment, get redirect_url)
-    → Redirect to payever checkout
-    → Customer completes payment
-    → payever POSTs notification to /payment/payever/notification
-    → Odoo updates transaction state
-    → Customer redirected to /payment/payever/return (or failure/cancel/pending)
-```
-
-### Callback URLs registered with payever
-
-| Purpose | Odoo URL |
-|---------|----------|
-| Success redirect | `/payment/payever/return?ref=REF&payment_id=--PAYMENT-ID--` |
-| Failure redirect | `/payment/payever/failure?ref=REF&payment_id=--PAYMENT-ID--` |
-| Cancel redirect  | `/payment/payever/cancel?ref=REF&payment_id=--PAYMENT-ID--` |
-| Pending redirect | `/payment/payever/pending?ref=REF&payment_id=--PAYMENT-ID--` |
-| Notification (webhook) | `/payment/payever/notification?ref=REF&payment_id=--PAYMENT-ID--` |
-
-payever substitutes `--PAYMENT-ID--` with the real payment ID at runtime.
-
----
-
-## Status Mapping
-
-| payever Status | Odoo State |
-|---------------|-----------|
-| `STATUS_NEW` | pending |
-| `STATUS_IN_PROCESS` | pending |
-| `STATUS_ACCEPTED` | authorized |
-| `STATUS_PAID` | done |
-| `STATUS_FAILED` | cancel |
-| `STATUS_DECLINED` | cancel |
-| `STATUS_CANCELLED` | cancel |
-| `STATUS_REFUNDED` | done |
+- **Redirect checkout** — customers are sent to the payever hosted checkout and redirected back after payment
+- **All payever payment methods** — 23 methods bundled out-of-the-box; sync more at any time
+- **Logo sync** — download payment method logos from your payever account with one click
+- **Refunds** — full and partial refunds from Accounting → Payments
+- **Manual capture** — authorize now, capture (ship goods) later
+- **Void / cancel** — cancel authorised-but-not-yet-captured transactions
+- **Webhook notifications** — asynchronous status updates with optional HMAC-SHA256 signature verification
+- **Sandbox & live mode** — switch between staging and production environments
 
 ---
 
 ## Requirements
 
-- Odoo 19.0
-- Python `requests` library (standard Odoo dependency)
+- Odoo **19.0**
+- Python package: `requests` (see `requirements.txt`)
+- A [payever](https://www.payever.org/) merchant account
+
+---
+
+## Installation
+
+### Via Odoo Apps (recommended)
+
+Install the module from the Odoo Apps store.
+
+### Manual
+
+1. Copy the `payment_payever` folder into your Odoo add-ons directory.
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+3. Restart Odoo and update the app list (**Settings → Apps → Update App List**).
+4. Install **payever Payments** from the Apps list.
+
+---
+
+## Configuration
+
+1. Go to **Accounting → Configuration → Payment Providers** (or **Website → Configuration → Payment Providers**).
+2. Open the **payever** provider.
+3. In the **Credentials** tab fill in:
+   - **Client ID** — from your payever account under *Connect → Shopsystems → Odoo*
+   - **Client Secret** — from the same page
+   - **Business UUID** — required for the payment method sync
+4. Set the **State** to **Test** (sandbox) or **Enabled** (live).
+5. Optionally set **Minimum Amount** and **Maximum Amount** limits.
+6. Click **Sync Payment Methods from payever** to fetch available methods and their logos.
+7. Enable the payment methods you want to offer and **Save**.
+
+### Manual Capture
+
+To use manual capture (authorize now, capture when you ship):
+
+1. In your **payever business account**, enable delayed/manual capture for the relevant payment methods.
+2. In Odoo, tick **Capture Amount Manually** on the payever provider form.
+3. After a customer pays, the transaction will appear in **Authorized** state.
+4. Go to the transaction record and click **Capture Transaction** to capture the payment.
+
+> **Note:** payever controls capture behaviour at the account level. Enabling manual capture in Odoo alone is not sufficient — the setting must also be configured in your payever account.
+
+### Refunds
+
+1. Go to **Accounting → Customers → Payments**.
+2. Open the payment you want to refund.
+3. Click **Refund** and enter the amount.
+
+---
+
+## Callback URLs
+
+The module registers the following public routes — no additional server configuration is needed:
+
+| Route | Purpose |
+|---|---|
+| `POST /payment/payever/notification` | Asynchronous webhook from payever |
+| `GET /payment/payever/return` | Customer redirect on success |
+| `GET /payment/payever/failure` | Customer redirect on failure |
+| `GET /payment/payever/cancel` | Customer redirect on cancel |
+| `GET /payment/payever/pending` | Customer redirect when payment is pending |
+
+---
+
+## Payment Status Mapping
+
+| payever status | Odoo state |
+|---|---|
+| `STATUS_NEW` | Pending |
+| `STATUS_IN_PROCESS` | Pending (or Authorized when manual capture is enabled) |
+| `STATUS_ACCEPTED` | Authorized |
+| `STATUS_PAID` | Done (captured) |
+| `STATUS_REFUNDED` | Done |
+| `STATUS_FAILED` | Cancelled |
+| `STATUS_DECLINED` | Cancelled |
+| `STATUS_CANCELLED` | Cancelled |
+
+---
+
+## Development
+
+```bash
+# Run linting
+pip install pylint pylint-odoo
+pylint --load-plugins pylint_odoo payment_payever/
+
+# Run with Docker (development only)
+docker compose up -d
+```
+
+---
+
+## License
+
+LGPL-3 — see [LICENSE](LICENSE).

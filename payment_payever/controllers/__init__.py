@@ -1,3 +1,2 @@
-# -*- coding: utf-8 -*-
-
+"""payever controllers."""
 from . import main
