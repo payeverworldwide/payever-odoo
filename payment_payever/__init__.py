@@ -1,9 +1,10 @@
 """payever payment module initialisation and post-install hook."""
 import base64
-import os
+import importlib.resources as pkg_resources
 
 from . import controllers
 from . import models
+from . import static
 
 
 def post_init_hook(env):
@@ -14,7 +15,8 @@ def post_init_hook(env):
     if not providers:
         return
 
-    logo_path = os.path.join(os.path.dirname(__file__), 'static', 'description', 'logo.png')
-    if os.path.exists(logo_path):
-        with open(logo_path, 'rb') as fh:
-            providers.write({'image_128': base64.b64encode(fh.read())})
+    try:
+        logo_data = pkg_resources.files(static).joinpath('description/logo.png').read_bytes()
+        providers.write({'image_128': base64.b64encode(logo_data)})
+    except Exception:
+        pass

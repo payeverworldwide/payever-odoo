@@ -6,7 +6,7 @@
     'license': 'LGPL-3',
     'author': 'payever GmbH',
     'website': 'https://www.payever.org/',
-    'summary': 'Accept payments via payever — credit card, PayPal, BNPL, installments and more',
+    'summary': 'Accept payments via payever - credit card, PayPal, BNPL, installments and more',
     'depends': ['payment'],
     'data': [
         'security/ir.model.access.csv',
