@@ -1,6 +1,6 @@
 # payever Payments for Odoo
 
-Accept payments via payever directly in your Odoo 19.0 store — credit card, PayPal, BNPL, Santander Installments, iDEAL, Bancontact, Apple Pay, Google Pay and many more.
+Accept payments via payever directly in your Odoo 19.0 store — credit card, PayPal, Openbank Pay, Verifone, BNPL, Santander Installments, iDEAL, Bancontact, Apple Pay, Google Pay and many more.
 
 ---
 
