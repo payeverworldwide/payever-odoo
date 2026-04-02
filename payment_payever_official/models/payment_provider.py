@@ -96,7 +96,7 @@ class PaymentProviderPayever(models.Model):
     def _get_redirect_form_view(self, is_validation=False):
         if self.code != 'payever':
             return super()._get_redirect_form_view(is_validation)
-        return self.env.ref('payment_payever.payever_redirect_form')
+        return self.env.ref('payment_payever_official.payever_redirect_form')
 
     # -------------------------------------------------------------------------
     # BACKEND ACTION: SYNC PAYMENT METHODS
@@ -250,7 +250,7 @@ class PaymentProviderPayever(models.Model):
         self.ensure_one()
         url = f'{self._payever_get_base_url()}{endpoint}'
         odoo_version = service.common.exp_version()['server_version']
-        mod = self.env.ref('base.module_payment_payever', raise_if_not_found=False)
+        mod = self.env.ref('base.module_payment_payever_official', raise_if_not_found=False)
         plugin_version = mod.installed_version if mod else '1.0'
 
         headers = {
