@@ -483,12 +483,10 @@ class PaymentTransactionPayever(models.Model):
                 _('payever capture failed: %s', response.get('error_description', ''))
             )
 
+        # A successful shipping-goods call captures this slice even when payever
+        # leaves the parent payment STATUS_ACCEPTED (partial capture).
         target_tx = child_capture_tx or self
-        new_status = response.get('result', {}).get('status', '')
-        if new_status == 'STATUS_PAID':
-            target_tx._set_done()
-        else:
-            target_tx._set_pending()
+        target_tx._set_done()
         target_tx._execute_callback()
 
         return child_capture_tx
@@ -509,7 +507,9 @@ class PaymentTransactionPayever(models.Model):
                 _('Cannot void: payever payment ID is not set on this transaction.')
             )
 
-        response = self.provider_id._payever_cancel(payment_id)
+        # Full cancel: empty body. Partial cancel (child tx): send the slice amount.
+        cancel_amount = round(abs(child_void_tx.amount), 2) if child_void_tx else None
+        response = self.provider_id._payever_cancel(payment_id, amount=cancel_amount)
 
         _logger.info(
             'payever: void response for %s\n%s',
