@@ -1,7 +1,7 @@
 # pylint: disable=missing-module-docstring
 {
     'name': 'payever Checkout',
-    'version': '17.0.1.0.1',
+    'version': '17.0.1.0.2',
     'category': 'Accounting/Payment Providers',
     'license': 'LGPL-3',
     'author': 'payever GmbH',
