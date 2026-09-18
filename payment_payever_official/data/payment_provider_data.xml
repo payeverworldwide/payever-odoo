@@ -4,8 +4,9 @@
     <!--
         Default payever payment provider record.
         Created once on install (noupdate="1").
-        Fill in Client ID, Client Secret and Business UUID in the backend
-        before activating this provider.
+        The logo and the module link are applied by post_init_hook.
+        Fill in Client ID and Client Secret in the backend before activating
+        this provider.
     -->
     <record id="payment_provider_payever" model="payment.provider">
         <field name="name">payever</field>
@@ -13,14 +14,8 @@
         <field name="state">disabled</field>
         <field name="is_published">False</field>
         <field name="sequence">10</field>
-        <field name="module_id" ref="base.module_payment_payever_official"/>
-        <field name="image_128" type="base64" file="payment_payever_official/static/description/icon.png"/>
         <field name="redirect_form_view_id" ref="payever_redirect_form"/>
-        <field name="payment_method_ids"
-               eval="[Command.set([
-                         ref('payment_payever_official.payment_method_payever'),
-                     ])]"
-        />
+        <field name="payment_method_ids" eval="[Command.set([ref('payment_method_payever')])]"/>
     </record>
 
 </odoo>
