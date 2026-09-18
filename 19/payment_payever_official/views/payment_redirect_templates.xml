@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!--
+        Redirect template for the payever checkout.
+
+        Odoo's _processRedirectFlow renders this template, extracts the <form>
+        element, appends it to the DOM, and calls .submit(). payever requires
+        a plain GET redirect to the checkout URL, so a minimal GET form is
+        all that is needed — no POST body or hidden inputs.
+    -->
+    <template id="payever_redirect_form">
+        <form method="get" t-att-action="api_url"/>
+    </template>
+
+</odoo>
