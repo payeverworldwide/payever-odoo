@@ -494,11 +494,9 @@ class PaymentTransactionPayever(models.Model):
                 self.env._('payever capture failed: %s', response.get('error_description', ''))
             )
 
-        new_status = response.get('result', {}).get('status', '')
-        if new_status == 'STATUS_PAID':
-            self._set_done()
-        else:
-            self._set_pending()
+        # A successful shipping-goods call captures this slice even when payever
+        # leaves the parent payment STATUS_ACCEPTED (partial capture).
+        self._set_done()
 
     # -------------------------------------------------------------------------
     # VOID / CANCEL
@@ -510,7 +508,15 @@ class PaymentTransactionPayever(models.Model):
             return super()._send_void_request()
 
         payment_id = self._payever_get_source_payment_id()
-        response = self.provider_id._payever_cancel(payment_id)
+        source = self.source_transaction_id or self
+        void_amount = round(abs(self.amount), 2)
+        # Full cancel: empty body. Partial cancel: send the slice amount.
+        cancel_amount = (
+            None
+            if source.currency_id.compare_amounts(void_amount, abs(source.amount)) == 0
+            else void_amount
+        )
+        response = self.provider_id._payever_cancel(payment_id, amount=cancel_amount)
 
         _logger.info(
             'payever: void response for %s\n%s',

@@ -407,10 +407,17 @@ class PaymentProviderPayever(models.Model):
             f'/api/payment/refund/{payment_id}', method='POST', data=payload
         )
 
-    def _payever_cancel(self, payment_id):
-        """POST /api/payment/cancel/{payment_id} — void an authorised payment."""
+    def _payever_cancel(self, payment_id, amount=None):
+        """POST /api/payment/cancel/{payment_id} — void an authorised payment.
+
+        A full cancel is sent with an empty body. A partial cancel includes
+        ``amount`` (the slice being voided).
+        """
+        payload = {}
+        if amount is not None:
+            payload['amount'] = round(amount, 2)
         return self._payever_make_request(
-            f'/api/payment/cancel/{payment_id}', method='POST', data={}
+            f'/api/payment/cancel/{payment_id}', method='POST', data=payload
         )
 
     def _payever_capture(self, payment_id, amount=None):
