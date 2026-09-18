@@ -1,6 +1,6 @@
 # payever Payments for Odoo
 
-Accept payments via payever directly in your Odoo 19.0 store — credit card, PayPal, Openbank Pay, Verifone, BNPL, Santander Installments, iDEAL, Bancontact, Apple Pay, Google Pay and many more.
+Accept payments via payever directly in your Odoo 17.0 store — credit card, PayPal, Openbank Pay, Verifone, BNPL, Santander Installments, iDEAL, Bancontact, Apple Pay, Google Pay and many more.
 
 ---
 
@@ -19,8 +19,8 @@ Accept payments via payever directly in your Odoo 19.0 store — credit card, Pa
 
 ## Requirements
 
-- Odoo **19.0**
-- Python package: `requests` (see `requirements.txt`)
+- Odoo **17.0**
+- Python package: `requests` (usually already present in the Odoo environment)
 - A [payever](https://www.payever.org/) merchant account
 
 ---
@@ -33,13 +33,9 @@ Install the module from the Odoo Apps store.
 
 ### Manual
 
-1. Copy the `payment_payever` folder into your Odoo add-ons directory.
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-3. Restart Odoo and update the app list (**Settings → Apps → Update App List**).
-4. Install **payever Payments** from the Apps list.
+1. Copy the `payment_payever_official` folder into your Odoo add-ons directory.
+2. Restart Odoo and update the app list (**Settings → Apps → Update App List**).
+3. Install **payever Checkout** from the Apps list.
 
 ---
 
@@ -109,7 +105,7 @@ The module registers the following public routes — no additional server config
 ```bash
 # Run linting
 pip install pylint pylint-odoo
-pylint --load-plugins pylint_odoo payment_payever/
+pylint --load-plugins pylint_odoo payment_payever_official/
 
 # Run with Docker (development only)
 docker compose up -d
