@@ -1,4 +1,12 @@
 """payever API constants and status-to-Odoo-state mapping."""
+
+# Technical name of this module, resolved at runtime so that XML IDs and asset
+# lookups keep working when the addon directory is named differently.
+MODULE_NAME = (
+    __name__.split('.')[2] if __name__.startswith('odoo.addons.')
+    else 'payment_payever_official'
+)
+
 SANDBOX_URL = 'https://proxy.staging.devpayever.com'
 LIVE_URL = 'https://proxy.payever.org'
 

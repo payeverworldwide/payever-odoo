@@ -46,7 +46,10 @@ Install the module from the Odoo Apps store.
 3. In the **Credentials** tab fill in:
    - **Client ID** — from your payever account under *Connect → Shopsystems → Odoo*
    - **Client Secret** — from the same page
-   - **Business UUID** — required for the payment method sync
+   - **Business UUID** — leave empty for a normal account. Fill it in only if your
+     organisation manages several businesses under a single set of API keys, in which
+     case it is sent as the `x-payever-business` header to select the business. That
+     setup has to be activated by payever support first.
 4. Set the **State** to **Test** (sandbox) or **Enabled** (live).
 5. Optionally set **Minimum Amount** and **Maximum Amount** limits.
 6. Click **Sync Payment Methods from payever** to fetch available methods and their logos.
