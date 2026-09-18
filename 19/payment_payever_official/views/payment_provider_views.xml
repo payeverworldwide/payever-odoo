@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="payment_provider_form_payever" model="ir.ui.view">
+        <field name="name">payment.provider.form.payever</field>
+        <field name="model">payment.provider</field>
+        <field name="inherit_id" ref="payment.payment_provider_form"/>
+        <field name="arch" type="xml">
+
+            <!-- Credentials -->
+            <xpath expr="//group[@name='provider_credentials']" position="inside">
+                <group invisible="code != 'payever'">
+                    <field name="payever_client_id"
+                           required="code == 'payever' and state != 'disabled'"/>
+                    <field name="payever_client_secret"
+                           required="code == 'payever' and state != 'disabled'"
+                           password="True"/>
+                    <field name="payever_business_uuid"/>
+                    <field name="payever_debug_logging"/>
+                </group>
+            </xpath>
+
+            <!-- Sync button + info notice (inside Credentials page) -->
+            <xpath expr="//page[@name='credentials']" position="inside">
+                <div invisible="code != 'payever'">
+                    <div class="mt-3">
+                        <button string="Sync Payment Methods from payever"
+                                name="action_sync_payever_methods"
+                                type="object"
+                                class="btn btn-secondary"
+                                icon="fa-refresh"
+                                confirm="This will fetch and update payment methods from your payever account. Continue?"/>
+                    </div>
+                    <div class="alert alert-info mt-3" role="alert">
+                        Find your credentials in your payever account under
+                        <strong>Connect &#8250; Shopsystems &#8250; Odoo</strong>.
+                    </div>
+                </div>
+            </xpath>
+
+            <!-- payever-specific limits, on top of the standard availability settings -->
+            <xpath expr="//group[@name='availability']" position="after">
+                <group string="payever Limits" invisible="code != 'payever'">
+                    <field name="payever_currency_id" options="{'no_create': True}"/>
+                    <field name="payever_minimum_amount"/>
+                    <field name="payever_maximum_amount"/>
+                </group>
+            </xpath>
+
+        </field>
+    </record>
+
+</odoo>
