@@ -135,6 +135,16 @@ class PaymentTransactionPayever(models.Model):
 
         return payload
 
+    def _payever_line_taxes(self, line):
+        """Return the tax records on a sale or invoice line.
+
+        Odoo 17 sale.order.line uses ``tax_id``; Odoo 18+ renamed it to
+        ``tax_ids``. Invoice lines use ``tax_ids`` on both.
+        """
+        if 'tax_ids' in line._fields:
+            return line.tax_ids
+        return line.tax_id
+
     def _payever_prepare_cart(self):
         """Return a list of cart-item dicts built from the linked sale order or invoice."""
         self.ensure_one()
@@ -145,6 +155,7 @@ class PaymentTransactionPayever(models.Model):
             for line in order.order_line.filtered(lambda l: not l.display_type):
                 if not line.price_total:
                     continue
+                taxes = self._payever_line_taxes(line)
                 lines.append({
                     'name': line.name or line.product_id.name or 'Item',
                     'identifier': line.product_id.default_code or str(line.id),
@@ -152,7 +163,7 @@ class PaymentTransactionPayever(models.Model):
                     'quantity': line.product_uom_qty,
                     'unit_price': round(abs(line.price_reduce_taxinc), 2),
                     'total_amount': round(abs(line.price_total), 2),
-                    'tax_rate': sum(line.tax_ids.mapped('amount')) if line.tax_ids else 0,
+                    'tax_rate': sum(taxes.mapped('amount')) if taxes else 0,
                     'total_tax_amount': round(abs(line.price_total - line.price_subtotal), 2),
                 })
 
@@ -164,6 +175,7 @@ class PaymentTransactionPayever(models.Model):
                 if not line.price_total:
                     continue
                 qty = abs(line.quantity) or 1
+                taxes = self._payever_line_taxes(line)
                 lines.append({
                     'name': line.name or (line.product_id.name if line.product_id else 'Item'),
                     'identifier': (line.product_id.default_code or str(line.id))
@@ -173,7 +185,7 @@ class PaymentTransactionPayever(models.Model):
                     'quantity': qty,
                     'unit_price': round(abs(line.price_total / qty), 2),
                     'total_amount': round(abs(line.price_total), 2),
-                    'tax_rate': line.tax_ids[0].amount if line.tax_ids else 0,
+                    'tax_rate': taxes[0].amount if taxes else 0,
                     'total_tax_amount': round(abs(line.price_total - line.price_subtotal), 2),
                 })
 
