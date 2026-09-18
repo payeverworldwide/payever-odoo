@@ -46,7 +46,9 @@ class PaymentProviderPayever(models.Model):
     payever_business_uuid = fields.Char(
         string='Business UUID',
         groups='base.group_user',
-        help='Business UUID from your payever account. Required for the payment method sync.',
+        help='Business UUID from your payever account, sent as the x-payever-business header. '
+             'Leave empty unless your organisation manages several businesses under a single '
+             'set of API keys; that setup must be activated by payever support first.',
     )
     payever_access_token = fields.Char(
         string='Access Token',
@@ -139,7 +141,20 @@ class PaymentProviderPayever(models.Model):
     def _get_redirect_form_view(self, is_validation=False):
         if self.code != 'payever':
             return super()._get_redirect_form_view(is_validation)
-        return self.env.ref('payment_payever_official.payever_redirect_form')
+
+        view = self.env.ref(
+            f'{const.MODULE_NAME}.payever_redirect_form', raise_if_not_found=False
+        )
+        if not view:  # The addon directory may carry another name.
+            view = self.redirect_form_view_id or self.env['ir.ui.view'].sudo().search(
+                [('key', '=like', '%.payever_redirect_form')], limit=1
+            )
+        if not view:
+            raise ValidationError(_(
+                'The payever redirect form is missing. Upgrade the payever Checkout module '
+                'to restore it, then start the payment again.'
+            ))
+        return view
 
     # -------------------------------------------------------------------------
     # BACKEND ACTION: SYNC PAYMENT METHODS
@@ -310,7 +325,7 @@ class PaymentProviderPayever(models.Model):
         self.ensure_one()
         url = f'{self._payever_get_base_url()}{endpoint}'
         odoo_version = service.common.exp_version()['server_version']
-        mod = self.env.ref('base.module_payment_payever_official', raise_if_not_found=False)
+        mod = self.env.ref(f'base.module_{const.MODULE_NAME}', raise_if_not_found=False)
         plugin_version = mod.installed_version if mod else '1.0'
 
         headers = {
@@ -319,6 +334,10 @@ class PaymentProviderPayever(models.Model):
             'Content-Type': 'application/json',
             'User-Agent': f'Odoo/{odoo_version} payeverOdoo/{plugin_version}',
         }
+        if self.payever_business_uuid:
+            # Targets one business of an organisation that holds several
+            # businesses under a single OAuth token.
+            headers['x-payever-business'] = self.payever_business_uuid
 
         result = None
         error_msg = _('Could not establish connection to the payever API.')
