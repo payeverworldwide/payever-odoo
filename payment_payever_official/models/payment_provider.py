@@ -2,6 +2,7 @@
 import base64
 import hashlib
 import hmac
+import importlib.resources as pkg_resources
 import json
 import logging
 from datetime import timedelta
@@ -10,11 +11,12 @@ import psycopg2
 
 import requests
 
-from odoo import api, fields, models, service, SUPERUSER_ID
+from odoo import Command, _, api, fields, models, service, SUPERUSER_ID
 from odoo.exceptions import ValidationError
 from odoo.modules.registry import Registry
 
 from .. import const
+from .. import static
 
 _logger = logging.getLogger(__name__)
 
@@ -64,15 +66,16 @@ class PaymentProviderPayever(models.Model):
         comodel_name='res.currency',
         string='Amount Currency',
         default=lambda self: self.env.ref('base.EUR', raise_if_not_found=False),
-        help='Currency used for the minimum and maximum amount limits.',
+        help='Currency used for the minimum and maximum checkout amount limits, '
+             'and for the payment method sync.',
     )
     payever_minimum_amount = fields.Monetary(
-        string='Minimum Amount',
+        string='Minimum Checkout Amount',
         currency_field='payever_currency_id',
         help='Minimum order amount accepted by payever at checkout. 0 = no restriction.',
     )
     payever_maximum_amount = fields.Monetary(
-        string='Maximum Amount',
+        string='Maximum Checkout Amount',
         currency_field='payever_currency_id',
         help='Maximum order amount accepted by payever at checkout. 0 = no restriction.',
     )
@@ -82,12 +85,52 @@ class PaymentProviderPayever(models.Model):
     # -------------------------------------------------------------------------
 
     def _compute_feature_support_fields(self):
-        res = super()._compute_feature_support_fields()
+        """Override of `payment` to declare refund and manual capture support."""
+        super()._compute_feature_support_fields()
         self.filtered(lambda p: p.code == 'payever').update({
             'support_refund': 'partial',
             'support_manual_capture': 'partial',
         })
-        return res
+
+    def _get_default_payment_method_codes(self):
+        """Override of `payment` to return the default payment method codes."""
+        default_codes = super()._get_default_payment_method_codes()
+        if self.code != 'payever':
+            return default_codes
+        return const.DEFAULT_PAYMENT_METHOD_CODES
+
+    # -------------------------------------------------------------------------
+    # AVAILABILITY
+    # -------------------------------------------------------------------------
+
+    @api.model
+    def _get_compatible_providers(self, company_id, partner_id, amount, currency_id=None, **kwargs):
+        """Override of `payment` to apply the payever minimum and maximum amount."""
+        providers = super()._get_compatible_providers(
+            company_id, partner_id, amount, currency_id=currency_id, **kwargs
+        )
+        if not amount:
+            return providers  # Validation operations have no amount to check.
+
+        company = self.env['res.company'].browse(company_id)
+        currency = self.env['res.currency'].browse(currency_id) if currency_id else None
+        currency = currency or company.currency_id
+
+        excluded = self.env['payment.provider']
+        for provider in providers.filtered(lambda p: p.code == 'payever'):
+            limit_currency = provider.payever_currency_id or currency
+            converted_amount = currency._convert(
+                amount, limit_currency, company, fields.Date.context_today(self)
+            ) if limit_currency != currency else amount
+
+            minimum = provider.payever_minimum_amount
+            maximum = provider.payever_maximum_amount
+            below = minimum and limit_currency.compare_amounts(converted_amount, minimum) < 0
+            above = maximum and limit_currency.compare_amounts(converted_amount, maximum) > 0
+            if below or above:
+                excluded |= provider
+
+        return providers - excluded
 
     # -------------------------------------------------------------------------
     # REDIRECT FORM
@@ -112,7 +155,7 @@ class PaymentProviderPayever(models.Model):
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
-                    'title': self.env._('Sync Failed'),
+                    'title': _('Sync Failed'),
                     'message': str(e),
                     'type': 'danger',
                 },
@@ -122,8 +165,8 @@ class PaymentProviderPayever(models.Model):
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
-                    'title': self.env._('No Methods Found'),
-                    'message': self.env._('payever returned an empty list of payment methods.'),
+                    'title': _('No Methods Found'),
+                    'message': _('payever returned an empty list of payment methods.'),
                     'type': 'warning',
                 },
             }
@@ -140,23 +183,40 @@ class PaymentProviderPayever(models.Model):
                 [('code', '=', code)], limit=1
             )
             if existing:
-                if image_b64:
-                    existing.write({'image': image_b64})
-            else:
-                vals = {'name': name, 'code': code, 'active': True}
-                if image_b64:
+                # Only fill in a logo when the method has none, so that logos of
+                # methods shared with other providers are left untouched.
+                vals = {'provider_ids': [Command.link(self.id)]}
+                if image_b64 and not existing.image:
                     vals['image'] = image_b64
-                self.env['payment.method'].create(vals)
+                existing.write(vals)
+            else:
+                self.env['payment.method'].create({
+                    'name': name,
+                    'code': code,
+                    'active': True,
+                    'image': image_b64 or self._payever_fallback_logo(),
+                    'support_refund': 'partial',
+                    'provider_ids': [Command.link(self.id)],
+                })
 
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
             'params': {
-                'title': self.env._('Sync Complete'),
-                'message': self.env._('payever payment methods have been updated.'),
+                'title': _('Sync Complete'),
+                'message': _('payever payment methods have been updated.'),
                 'type': 'success',
             },
         }
+
+    def _payever_fallback_logo(self):
+        """Return the module icon as base64, used when a method has no remote logo."""
+        try:
+            logo_data = pkg_resources.files(static).joinpath('description/icon.png').read_bytes()
+            return base64.b64encode(logo_data)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            _logger.warning('payever: could not load fallback payment method logo: %s', exc)
+        return False
 
     def _payever_download_logo(self, logo_url, code):
         """Download a payment method logo and return it as base64 bytes, or False on failure."""
@@ -209,12 +269,12 @@ class PaymentProviderPayever(models.Model):
             token_data = response.json()
         except requests.exceptions.RequestException as exc:
             raise ValidationError(
-                self.env._('payever: Could not obtain access token. %s', str(exc))
+                _('payever: Could not obtain access token. %s', str(exc))
             ) from exc
 
         access_token = token_data.get('access_token')
         if not access_token:
-            raise ValidationError(self.env._('payever: Empty access token in OAuth response.'))
+            raise ValidationError(_('payever: Empty access token in OAuth response.'))
 
         expiry = now + timedelta(seconds=int(token_data.get('expires_in', 86400)))
         try:
@@ -261,7 +321,7 @@ class PaymentProviderPayever(models.Model):
         }
 
         result = None
-        error_msg = self.env._('Could not establish connection to the payever API.')
+        error_msg = _('Could not establish connection to the payever API.')
         try:
             response = requests.request(
                 method, url, params=params, json=data, headers=headers, timeout=60
@@ -279,7 +339,7 @@ class PaymentProviderPayever(models.Model):
         except requests.exceptions.RequestException as exc:
             if silent_errors:
                 return {'error': error_msg}
-            raise ValidationError(self.env._('payever: %s', error_msg)) from exc
+            raise ValidationError(_('payever: %s', error_msg)) from exc
         finally:
             if self.payever_debug_logging:
                 self._payever_log(method, url, data, result)
@@ -346,7 +406,7 @@ class PaymentProviderPayever(models.Model):
         """POST /api/v2/payment/methods — list available payment options."""
         response = self._payever_make_request(
             '/api/v2/payment/methods', method='POST',
-            data={'channel': 'api', 'currency': 'EUR'},
+            data={'channel': 'api', 'currency': self.payever_currency_id.name or 'EUR'},
             silent_errors=True,
         )
         if response.get('error'):
