@@ -3,7 +3,7 @@ import logging
 import pprint
 from urllib.parse import urljoin
 
-from odoo import fields, models
+from odoo import api, fields, models
 from odoo.exceptions import UserError, ValidationError
 
 from .. import const
@@ -101,7 +101,7 @@ class PaymentTransactionPayever(models.Model):
             'customer': {
                 'type': 'person',
                 'email': partner.email or '',
-                'phone': partner.phone or partner.mobile or '',
+                'phone': partner.phone or '',
             },
             'cart': self._payever_prepare_cart(),
             'urls': {
@@ -140,7 +140,7 @@ class PaymentTransactionPayever(models.Model):
         self.ensure_one()
         lines = []
 
-        if self.sale_order_ids:
+        if 'sale_order_ids' in self._fields and self.sale_order_ids:
             order = self.sale_order_ids[0]
             for line in order.order_line.filtered(lambda l: not l.display_type):
                 if not line.price_total:
@@ -156,7 +156,7 @@ class PaymentTransactionPayever(models.Model):
                     'total_tax_amount': round(abs(line.price_total - line.price_subtotal), 2),
                 })
 
-        elif self.invoice_ids:
+        elif 'invoice_ids' in self._fields and self.invoice_ids:
             invoice = self.invoice_ids[0]
             for line in invoice.invoice_line_ids.filtered(
                 lambda l: l.display_type not in ('line_section', 'line_note')
@@ -220,7 +220,7 @@ class PaymentTransactionPayever(models.Model):
             'first_name': first_name,
             'last_name': last_name,
             'email': partner.email or '',
-            'phone': partner.phone or partner.mobile or '',
+            'phone': partner.phone or '',
             'street': street_name,
             'street_number': street_number,
             'city': partner.city or '',
@@ -232,18 +232,140 @@ class PaymentTransactionPayever(models.Model):
     # STATE UPDATES
     # -------------------------------------------------------------------------
 
-    def _process_notification_data(self, notification_data):
-        """Process payever webhook or polling data and update the transaction state."""
+    @api.model
+    def _extract_reference(self, provider_code, payment_data):
+        """Override of `payment` to extract the reference from the payment data."""
+        if provider_code != 'payever':
+            return super()._extract_reference(provider_code, payment_data)
+        return payment_data.get('reference')
+
+    def _extract_amount_data(self, payment_data):
+        """Override of `payment` to extract the amount and currency from the payment data.
+
+        Returning ``None`` skips the core amount check; this happens only when
+        payever sends no amount at all, in which case there is nothing to
+        compare against.
+        """
         if self.provider_code != 'payever':
-            return super()._process_notification_data(notification_data)
-        return self._payever_process_payment_data(notification_data)
+            return super()._extract_amount_data(payment_data)
+
+        amount = next(
+            (payment_data[key] for key in const.AMOUNT_KEYS if payment_data.get(key) is not None),
+            None,
+        )
+        currency_code = next(
+            (payment_data[key] for key in const.CURRENCY_KEYS if payment_data.get(key)), None
+        )
+        if amount is None or not currency_code:
+            return None
+        try:
+            amount = float(amount)
+        except (TypeError, ValueError):
+            return None
+        return {
+            'amount': abs(amount) if self.operation == 'refund' else amount,
+            'currency_code': currency_code,
+        }
+
+    def _apply_updates(self, payment_data):
+        """Override of `payment` to update the transaction based on the payment data."""
+        if self.provider_code != 'payever':
+            return super()._apply_updates(payment_data)
+        return self._payever_process_payment_data(payment_data)
+
+    def _payever_fetch_payment_data(self, payment_id):
+        """Fetch the authoritative payment object from payever.
+
+        Payment data received over a public route (webhook body or return URL
+        query string) is never trusted on its own: the payment is always read
+        back from the payever API before the transaction state is updated.
+
+        :param str payment_id: The payever payment ID to read back.
+        :return: The ``result`` object of the retrieve-payment response, or an
+                 empty dict when it could not be retrieved.
+        :rtype: dict
+        """
+        self.ensure_one()
+        if not payment_id or payment_id == '--PAYMENT-ID--':
+            _logger.warning(
+                'payever: no payment id available to verify transaction %s', self.reference
+            )
+            return {}
+        try:
+            response = self.provider_id._payever_retrieve_payment(payment_id)
+        except ValidationError as exc:
+            _logger.warning(
+                'payever: could not retrieve payment %s for transaction %s – %s',
+                payment_id, self.reference, exc,
+            )
+            return {}
+        result = response.get('result') or {}
+        if not result.get('status'):
+            _logger.warning(
+                'payever: retrieve-payment returned no status for payment %s (transaction %s)',
+                payment_id, self.reference,
+            )
+            return {}
+        return result
+
+    def _payever_payment_data_matches(self, payment_data):
+        """Check that payever's payment data really belongs to this transaction.
+
+        Guards against a payment of another order (or another amount) being
+        attached to this transaction through the public callback routes.
+
+        :param dict payment_data: The payment object returned by payever.
+        :return: Whether the payment data may be applied to this transaction.
+        :rtype: bool
+        """
+        self.ensure_one()
+
+        reference = payment_data.get('reference')
+        if reference and reference != self.reference:
+            _logger.warning(
+                'payever: payment data for reference %s does not match transaction %s; ignored',
+                reference, self.reference,
+            )
+            return False
+
+        currency = next(
+            (payment_data[key] for key in const.CURRENCY_KEYS if payment_data.get(key)), None
+        )
+        if currency and currency != self.currency_id.name:
+            _logger.warning(
+                'payever: currency %s of payment data does not match %s of transaction %s; ignored',
+                currency, self.currency_id.name, self.reference,
+            )
+            return False
+
+        amount = next(
+            (payment_data[key] for key in const.AMOUNT_KEYS if payment_data.get(key) is not None),
+            None,
+        )
+        if amount is None:
+            return True
+        try:
+            amount = float(amount)
+        except (TypeError, ValueError):
+            _logger.warning(
+                'payever: unreadable amount %r in payment data of transaction %s; ignored',
+                amount, self.reference,
+            )
+            return False
+        if self.currency_id.compare_amounts(abs(amount), abs(self.amount)) != 0:
+            _logger.warning(
+                'payever: amount %s of payment data does not match %s of transaction %s; ignored',
+                amount, self.amount, self.reference,
+            )
+            return False
+        return True
 
     def _payever_process_payment_data(self, payment_data):
         """Apply a payever payment-data dict to this transaction.
 
-        ``payment_data`` is either the ``data.payment`` object from a webhook
-        notification or the ``result`` object from a retrieve-payment response —
-        both share the same field schema.
+        ``payment_data`` is the ``result`` object of a retrieve-payment response;
+        the webhook body shares the same field schema but is only used to locate
+        the transaction, never to update it.
 
         Status mapping notes:
         - STATUS_ACCEPTED  → authorized (payment ready for capture)
@@ -253,6 +375,9 @@ class PaymentTransactionPayever(models.Model):
         - STATUS_PAID      → done (already captured by payever)
         """
         if self.state == 'done':
+            return
+
+        if not self._payever_payment_data_matches(payment_data):
             return
 
         payever_id = payment_data.get('id')
@@ -281,33 +406,43 @@ class PaymentTransactionPayever(models.Model):
                 self.env._('Payment cancelled by payever with status: %s', payment_status)
             )
         else:
-            _logger.info(
-                'payever: unrecognised status "%s" for transaction %s',
+            # Leave the transaction untouched: an unmapped status is a status
+            # payever added after this module was released, not a failure.
+            _logger.warning(
+                'payever: unrecognised status "%s" for transaction %s; state left unchanged',
                 payment_status, self.reference,
-            )
-            self._set_error(
-                self.env._('Received unknown payment status from payever: %s', payment_status)
             )
 
     # -------------------------------------------------------------------------
     # REFUND
     # -------------------------------------------------------------------------
 
-    def _send_refund_request(self, amount_to_refund=None):
-        """Send a refund request to payever."""
-        if self.provider_code != 'payever':
-            return super()._send_refund_request(amount_to_refund=amount_to_refund)
+    def _payever_get_source_payment_id(self):
+        """Return the payever payment ID of the payment being operated on.
 
-        refund_tx = super()._send_refund_request(amount_to_refund=amount_to_refund)
+        Refund, capture and void requests run on a child transaction created by
+        `payment`; the payever payment ID lives on the source transaction.
 
-        payment_id = self.provider_reference or self.payever_payment_id
+        :return: The payever payment ID.
+        :rtype: str
+        :raises UserError: If no payever payment ID is set.
+        """
+        self.ensure_one()
+        source = self.source_transaction_id or self
+        payment_id = source.provider_reference or source.payever_payment_id
         if not payment_id:
             raise UserError(
-                self.env._('Cannot refund: payever payment ID is not set on this transaction.')
+                self.env._('payever payment ID is not set on transaction %s.', source.reference)
             )
+        return payment_id
 
-        amount = abs(refund_tx.amount) if refund_tx else abs(self.amount)
-        response = self.provider_id._payever_refund(payment_id, amount=amount)
+    def _send_refund_request(self):
+        """Override of `payment` to send a refund request to payever."""
+        if self.provider_code != 'payever':
+            return super()._send_refund_request()
+
+        payment_id = self._payever_get_source_payment_id()
+        response = self.provider_id._payever_refund(payment_id, amount=abs(self.amount))
 
         _logger.info(
             'payever: refund response for %s\n%s',
@@ -319,35 +454,23 @@ class PaymentTransactionPayever(models.Model):
                 self.env._('payever refund failed: %s', response.get('error_description', ''))
             )
 
-        if refund_tx:
-            new_status = response.get('result', {}).get('status', '')
-            if new_status in ('STATUS_REFUNDED', 'STATUS_CANCELLED'):
-                refund_tx._set_done()
-            else:
-                refund_tx._set_pending()
-
-        return refund_tx
+        new_status = response.get('result', {}).get('status', '')
+        if new_status in ('STATUS_REFUNDED', 'STATUS_CANCELLED'):
+            self._set_done()
+        else:
+            self._set_pending()
 
     # -------------------------------------------------------------------------
     # CAPTURE
     # -------------------------------------------------------------------------
 
-    def _send_capture_request(self, amount_to_capture=None):
-        """Send a capture (shipping-goods) request to payever."""
+    def _send_capture_request(self):
+        """Override of `payment` to send a capture (shipping-goods) request to payever."""
         if self.provider_code != 'payever':
-            return super()._send_capture_request(amount_to_capture=amount_to_capture)
+            return super()._send_capture_request()
 
-        payment_id = (
-            self.source_transaction_id.provider_reference
-            or self.source_transaction_id.payever_payment_id
-        )
-        if not payment_id:
-            raise UserError(self.env._(
-                'Cannot capture: payever payment ID is not set on the source transaction.'
-            ))
-
-        amount = round(amount_to_capture or self.amount, 2)
-        response = self.provider_id._payever_capture(payment_id, amount=amount)
+        payment_id = self._payever_get_source_payment_id()
+        response = self.provider_id._payever_capture(payment_id, amount=round(abs(self.amount), 2))
 
         _logger.info(
             'payever: capture response for %s\n%s',
@@ -365,26 +488,16 @@ class PaymentTransactionPayever(models.Model):
         else:
             self._set_pending()
 
-        return self.env['payment.transaction']
-
     # -------------------------------------------------------------------------
     # VOID / CANCEL
     # -------------------------------------------------------------------------
 
-    def _send_void_request(self, amount_to_void=None):
-        """Send a void/cancel request to payever."""
+    def _send_void_request(self):
+        """Override of `payment` to send a void/cancel request to payever."""
         if self.provider_code != 'payever':
-            return super()._send_void_request(amount_to_void=amount_to_void)
+            return super()._send_void_request()
 
-        payment_id = (
-            self.source_transaction_id.provider_reference
-            or self.source_transaction_id.payever_payment_id
-        )
-        if not payment_id:
-            raise UserError(
-                self.env._('Cannot void: payever payment ID is not set on the source transaction.')
-            )
-
+        payment_id = self._payever_get_source_payment_id()
         response = self.provider_id._payever_cancel(payment_id)
 
         _logger.info(
@@ -398,4 +511,3 @@ class PaymentTransactionPayever(models.Model):
             )
 
         self._set_canceled()
-        return self.env['payment.transaction']
