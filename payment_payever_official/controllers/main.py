@@ -4,7 +4,6 @@ import logging
 import pprint
 
 from odoo import http
-from odoo.exceptions import ValidationError
 from odoo.http import request
 
 _logger = logging.getLogger(__name__)
@@ -55,6 +54,10 @@ class PayeverController(http.Controller):
 
         The ``ref`` and ``payment_id`` query-string parameters are also filled in
         by payever from the placeholder we supplied during create.
+
+        The body is only used to identify the transaction and the payment; the
+        status itself is always read back from the payever API before the
+        transaction is updated.
         """
         try:
             raw = request.httprequest.get_data(as_text=True)
@@ -89,7 +92,7 @@ class PayeverController(http.Controller):
             return request.make_response('FORBIDDEN', status=403)
 
         try:
-            tx_sudo._payever_process_payment_data(payment_data)
+            self._apply_verified_payment(tx_sudo, payment_id)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             _logger.exception(
                 'payever notification: error processing transaction %s – %s', reference, exc
@@ -101,22 +104,30 @@ class PayeverController(http.Controller):
     # CUSTOMER RETURN URLS
     # -------------------------------------------------------------------------
 
-    @http.route(_return_url, type='http', methods=['GET'], auth='public', website=True)
+    @http.route(
+        _return_url, type='http', methods=['GET'], auth='public', csrf=False, save_session=False,
+    )
     def payever_return(self, ref=None, payment_id=None, **_kwargs):
         """Redirect target after a successful payment."""
         return self._handle_customer_return(ref, payment_id)
 
-    @http.route(_failure_url, type='http', methods=['GET'], auth='public', website=True)
+    @http.route(
+        _failure_url, type='http', methods=['GET'], auth='public', csrf=False, save_session=False,
+    )
     def payever_failure(self, ref=None, payment_id=None, **_kwargs):
         """Redirect target after a failed payment."""
         return self._handle_customer_return(ref, payment_id)
 
-    @http.route(_cancel_url, type='http', methods=['GET'], auth='public', website=True)
+    @http.route(
+        _cancel_url, type='http', methods=['GET'], auth='public', csrf=False, save_session=False,
+    )
     def payever_cancel(self, ref=None, payment_id=None, **_kwargs):
         """Redirect target when the customer cancels at checkout."""
         return self._handle_customer_return(ref, payment_id)
 
-    @http.route(_pending_url, type='http', methods=['GET'], auth='public', website=True)
+    @http.route(
+        _pending_url, type='http', methods=['GET'], auth='public', csrf=False, save_session=False,
+    )
     def payever_pending(self, ref=None, payment_id=None, **_kwargs):
         """Redirect target for payments pending further processing."""
         return self._handle_customer_return(ref, payment_id)
@@ -144,20 +155,27 @@ class PayeverController(http.Controller):
             _logger.warning('payever return: transaction not found for ref=%s', ref)
             return request.redirect(_fallback)
 
-        if payment_id and payment_id != '--PAYMENT-ID--':
-            tx_sudo.payever_payment_id = payment_id
-            tx_sudo.provider_reference = payment_id
-            try:
-                response = tx_sudo.provider_id._payever_retrieve_payment(payment_id)
-                result = response.get('result', {})
-                if result and result.get('status'):
-                    tx_sudo._payever_process_payment_data(result)
-            except ValidationError as exc:
-                _logger.warning(
-                    'payever return: could not retrieve payment %s – %s', payment_id, exc
-                )
+        self._apply_verified_payment(tx_sudo, payment_id)
 
         return request.redirect(tx_sudo.landing_route or '/payment/status')
+
+    @staticmethod
+    def _apply_verified_payment(tx_sudo, payment_id):
+        """Read the payment back from payever and update *tx_sudo* accordingly.
+
+        Both the webhook and the customer return URLs are public routes whose
+        parameters are attacker-controllable, so the payment is fetched from the
+        payever API and checked against the transaction before anything is
+        applied.
+
+        :param tx_sudo: The `payment.transaction` record, in sudo mode.
+        :param str payment_id: The payever payment ID from the callback.
+        :return: None
+        """
+        payment_data = tx_sudo._payever_fetch_payment_data(payment_id)
+        if not payment_data or not tx_sudo._payever_payment_data_matches(payment_data):
+            return
+        tx_sudo._process('payever', payment_data)
 
     @staticmethod
     def _get_tx_or_none(reference):

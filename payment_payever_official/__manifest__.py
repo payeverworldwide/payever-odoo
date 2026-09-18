@@ -2,20 +2,26 @@
 {
     'name': 'payever Checkout',
     'version': '19.0.1.0.0',
-    'category': 'eCommerce',
+    'category': 'Accounting/Payment Providers',
     'license': 'LGPL-3',
     'author': 'payever GmbH',
     'website': 'https://www.payever.org/',
     'summary': 'Accept payments via payever - credit card, PayPal, BNPL, installments and more',
+    'description': ' ',
     'depends': ['payment'],
+    'external_dependencies': {
+        'python': ['requests'],
+    },
     'data': [
         'security/ir.model.access.csv',
         'views/payment_provider_views.xml',
         'views/payment_transaction_views.xml',
         'views/payment_redirect_templates.xml',
+        'data/payment_method_data.xml',
         'data/payment_provider_data.xml',
     ],
     'post_init_hook': 'post_init_hook',
+    'uninstall_hook': 'uninstall_hook',
     'images': [
         'static/description/cover.png',
     ],

@@ -11,10 +11,9 @@
             <xpath expr="//group[@name='provider_credentials']" position="inside">
                 <group invisible="code != 'payever'">
                     <field name="payever_client_id"
-                           required="code == 'payever'"
-                           password="True"/>
+                           required="code == 'payever' and state != 'disabled'"/>
                     <field name="payever_client_secret"
-                           required="code == 'payever'"
+                           required="code == 'payever' and state != 'disabled'"
                            password="True"/>
                     <field name="payever_business_uuid"/>
                     <field name="payever_debug_logging"/>
@@ -39,12 +38,9 @@
                 </div>
             </xpath>
 
-            <!-- Replace the default Availability group with payever-specific min/max fields -->
-            <xpath expr="//group[@name='availability']" position="attributes">
-                <attribute name="invisible">code == 'payever'</attribute>
-            </xpath>
+            <!-- payever-specific limits, on top of the standard availability settings -->
             <xpath expr="//group[@name='availability']" position="after">
-                <group string="Availability" invisible="code != 'payever'">
+                <group string="payever Limits" invisible="code != 'payever'">
                     <field name="payever_currency_id" options="{'no_create': True}"/>
                     <field name="payever_minimum_amount"/>
                     <field name="payever_maximum_amount"/>
