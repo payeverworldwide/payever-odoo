@@ -205,15 +205,18 @@ class PaymentProviderPayever(models.Model):
                     vals['image'] = image_b64
                 existing.write(vals)
             else:
-                self.env['payment.method'].create({
+                vals = {
                     'name': name,
                     'code': code,
                     'active': True,
                     'image': image_b64 or self._payever_fallback_logo(),
                     'support_refund': 'partial',
-                    'support_manual_capture': 'partial',
                     'provider_ids': [Command.link(self.id)],
-                })
+                }
+                # Odoo 19 stores this on payment.method; Odoo 17 only has it on the provider.
+                if 'support_manual_capture' in self.env['payment.method']._fields:
+                    vals['support_manual_capture'] = 'partial'
+                self.env['payment.method'].create(vals)
 
         return {
             'type': 'ir.actions.client',
