@@ -1,22 +1,24 @@
 # pylint: disable=missing-module-docstring
 {
     'name': 'payever Checkout',
-    'version': '17.0.1.0.2',
+    'version': '17.0.1.0.3',
     'category': 'Accounting/Payment Providers',
     'license': 'LGPL-3',
     'author': 'payever GmbH',
     'website': 'https://www.payever.org/',
     'summary': 'Accept payments via payever - credit card, PayPal, BNPL, installments and more',
     'description': ' ',
-    'depends': ['payment'],
+    'depends': ['payment', 'website_sale'],
     'external_dependencies': {
         'python': ['requests'],
     },
     'data': [
         'security/ir.model.access.csv',
         'views/payment_provider_views.xml',
+        'views/payment_method_views.xml',
         'views/payment_transaction_views.xml',
         'views/payment_redirect_templates.xml',
+        'views/payment_return_messages.xml',
         'data/payment_method_data.xml',
         'data/payment_provider_data.xml',
     ],

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="payment_method_tree_payever" model="ir.ui.view">
+        <field name="name">payment.method.tree.payever</field>
+        <field name="model">payment.method</field>
+        <field name="inherit_id" ref="payment.payment_method_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='name']" position="after">
+                <field name="payever_country_label"
+                       string="Allowed countries"
+                       optional="show"/>
+                <field name="payever_business_type"
+                       string="Business type"
+                       optional="show"/>
+                <field name="payever_is_redirect_method"
+                       string="Redirect method"
+                       optional="hide"/>
+                <field name="payever_minimum_amount"
+                       string="Minimum amount"
+                       optional="hide"/>
+                <field name="payever_maximum_amount"
+                       string="Maximum amount"
+                       optional="hide"/>
+                <field name="payever_currency_id"
+                       string="Currency"
+                       optional="hide"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="payment_method_form_payever" model="ir.ui.view">
+        <field name="name">payment.method.form.payever</field>
+        <field name="model">payment.method</field>
+        <field name="inherit_id" ref="payment.payment_method_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet/group" position="inside">
+                <field name="payever_synced" invisible="True"/>
+                <field name="payever_country_ids"
+                       widget="many2many_tags"
+                       invisible="not payever_synced"/>
+                <field name="payever_currency_id"
+                       invisible="not payever_synced"/>
+                <field name="payever_minimum_amount"
+                       invisible="not payever_synced"/>
+                <field name="payever_maximum_amount"
+                       invisible="not payever_synced"/>
+                <field name="payever_business_type"
+                       invisible="not payever_synced"/>
+                <field name="payever_is_redirect_method"
+                       invisible="not payever_synced"/>
+                <field name="payever_force_redirect"
+                       invisible="not payever_synced or not payever_is_redirect_method"/>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>
