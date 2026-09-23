@@ -78,6 +78,22 @@ class PaymentTransactionPayever(models.Model):
             return urljoin(base_url, f'{path}?ref={ref}&payment_id=--PAYMENT-ID--')
 
         partner = self.partner_id
+        is_b2b = self._payever_is_b2b_customer()
+        if (
+            self.payment_method_code
+            and self.payment_method_code != 'payever'
+            and not self.payment_method_id._payever_is_available(
+                self.provider_id.ids,
+                partner.country_id,
+                self.amount,
+                self.currency_id,
+                is_b2b,
+            )
+        ):
+            raise ValidationError(self.env._(
+                'The selected payever payment method is not available for this '
+                'customer, country, or order amount.'
+            ))
 
         odoo_version = (
             self.env['ir.module.module'].sudo()
@@ -90,6 +106,7 @@ class PaymentTransactionPayever(models.Model):
                 'type': 'ecommerce',
                 'source': f'Odoo/{odoo_version}',
             },
+            'locale': self.provider_id._payever_get_locale(partner),
             'reference': ref,
             'purchase': {
                 'amount': round(self.amount, 2),
@@ -129,11 +146,33 @@ class PaymentTransactionPayever(models.Model):
 
         if self.payment_method_code and self.payment_method_code != 'payever':
             payload['payment_method'] = self.payment_method_code
+            if (
+                self.payment_method_id.payever_is_redirect_method
+                and self.payment_method_id.payever_force_redirect
+            ):
+                payload['payment_data'] = {'force_redirect': True}
 
         if self.provider_id.state == 'test':
             payload['options']['test_mode'] = True
 
         return payload
+
+    def _payever_is_b2b_customer(self):
+        """Return whether transaction billing or shipping names a company."""
+        self.ensure_one()
+        partners = self.partner_id
+        if 'sale_order_ids' in self._fields:
+            for order in self.sale_order_ids:
+                partners |= order.partner_invoice_id | order.partner_shipping_id
+        if 'invoice_ids' in self._fields:
+            for invoice in self.invoice_ids:
+                partners |= invoice.partner_id
+                if 'partner_shipping_id' in invoice._fields:
+                    partners |= invoice.partner_shipping_id
+        return any(
+            self.env['payment.method']._payever_partner_has_company(partner)
+            for partner in partners
+        )
 
     def _payever_line_taxes(self, line):
         """Return the tax records on a sale or invoice line.

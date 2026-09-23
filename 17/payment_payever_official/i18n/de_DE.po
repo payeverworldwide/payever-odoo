@@ -1,0 +1,23 @@
+# Translation of payever Checkout.
+msgid ""
+msgstr ""
+"Project-Id-Version: Odoo Server\n"
+"Language: de_DE\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. module: payment_payever_official
+#: model_terms:ir.ui.view,arch_db:payment_payever_official.payever_payment_return_messages
+msgid "Your payment was cancelled. You can try again or choose another payment method."
+msgstr "Ihre Zahlung wurde abgebrochen. Sie können es erneut versuchen oder eine andere Zahlungsmethode wählen."
+
+#. module: payment_payever_official
+#: model_terms:ir.ui.view,arch_db:payment_payever_official.payever_payment_return_messages
+msgid "Your payment failed. Please try again or choose another payment method."
+msgstr "Ihre Zahlung ist fehlgeschlagen. Bitte versuchen Sie es erneut oder wählen Sie eine andere Zahlungsmethode."
+
+#. module: payment_payever_official
+#: model_terms:ir.ui.view,arch_db:payment_payever_official.payever_payment_return_messages
+msgid "Your payment was declined. Please choose another payment method."
+msgstr "Ihre Zahlung wurde abgelehnt. Bitte wählen Sie eine andere Zahlungsmethode."

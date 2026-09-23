@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template
+        id="payever_payment_return_messages"
+        inherit_id="website_sale.payment"
+        name="payever payment return messages"
+    >
+        <xpath expr="//div[@t-if='errors']" position="before">
+            <div
+                t-if="payever_payment_result == 'cancelled'"
+                class="alert alert-warning"
+                role="alert"
+            >
+                Your payment was cancelled. You can try again or choose another payment method.
+            </div>
+            <div
+                t-if="payever_payment_result == 'failed'"
+                class="alert alert-danger"
+                role="alert"
+            >
+                Your payment failed. Please try again or choose another payment method.
+            </div>
+            <div
+                t-if="payever_payment_result == 'declined'"
+                class="alert alert-danger"
+                role="alert"
+            >
+                Your payment was declined. Please choose another payment method.
+            </div>
+        </xpath>
+    </template>
+</odoo>

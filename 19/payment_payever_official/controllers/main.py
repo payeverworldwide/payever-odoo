@@ -4,7 +4,10 @@ import logging
 import pprint
 
 from odoo import http
+from odoo.addons.payment.controllers.post_processing import PaymentPostProcessing
 from odoo.http import request
+
+from .. import const
 
 _logger = logging.getLogger(__name__)
 
@@ -105,44 +108,60 @@ class PayeverController(http.Controller):
     # -------------------------------------------------------------------------
 
     @http.route(
-        _return_url, type='http', methods=['GET'], auth='public', csrf=False, save_session=False,
+        _return_url, type='http', methods=['GET'], auth='public', csrf=False,
     )
     def payever_return(self, ref=None, payment_id=None, **_kwargs):
         """Redirect target after a successful payment."""
         return self._handle_customer_return(ref, payment_id)
 
     @http.route(
-        _failure_url, type='http', methods=['GET'], auth='public', csrf=False, save_session=False,
+        _failure_url, type='http', methods=['GET'], auth='public', csrf=False,
     )
     def payever_failure(self, ref=None, payment_id=None, **_kwargs):
         """Redirect target after a failed payment."""
-        return self._handle_customer_return(ref, payment_id)
+        return self._handle_customer_return(
+            ref, payment_id, retry_checkout=True, checkout_result='failed'
+        )
 
     @http.route(
-        _cancel_url, type='http', methods=['GET'], auth='public', csrf=False, save_session=False,
+        _cancel_url, type='http', methods=['GET'], auth='public', csrf=False,
     )
     def payever_cancel(self, ref=None, payment_id=None, **_kwargs):
         """Redirect target when the customer cancels at checkout."""
-        return self._handle_customer_return(ref, payment_id)
+        return self._handle_customer_return(
+            ref, payment_id, retry_checkout=True, checkout_result='cancelled'
+        )
 
     @http.route(
-        _pending_url, type='http', methods=['GET'], auth='public', csrf=False, save_session=False,
+        _pending_url, type='http', methods=['GET'], auth='public', csrf=False,
     )
     def payever_pending(self, ref=None, payment_id=None, **_kwargs):
         """Redirect target for payments pending further processing."""
-        return self._handle_customer_return(ref, payment_id)
+        return self._handle_customer_return(ref, payment_id, use_payment_status=True)
 
     # -------------------------------------------------------------------------
     # PRIVATE HELPERS
     # -------------------------------------------------------------------------
 
-    def _handle_customer_return(self, ref, payment_id):
+    def _handle_customer_return(
+        self, ref, payment_id, retry_checkout=False, checkout_result=None,
+        use_payment_status=False,
+    ):
         """Retrieve fresh payment status from payever and redirect the customer.
 
         All four return URL handlers (success / failure / cancel / pending)
         converge here. We always fetch the live status from payever so that the
         transaction state in Odoo reflects reality regardless of which URL was
         hit.
+
+        Unpaid webshop transactions send the customer back to the payment step
+        of the checkout instead of the confirmation page, so that the order can
+        be paid again. Declined payment methods are hidden there for the rest of
+        the session.
+
+        :param bool retry_checkout: Whether payever reported the payment as
+            failed or cancelled through the URL, so that the checkout is resumed
+            even when the payment status is not final yet.
         """
         _fallback = '/web#action=payment.action_payment_status'
 
@@ -155,7 +174,29 @@ class PayeverController(http.Controller):
             _logger.warning('payever return: transaction not found for ref=%s', ref)
             return request.redirect(_fallback)
 
-        self._apply_verified_payment(tx_sudo, payment_id)
+        payment_data = self._apply_verified_payment(tx_sudo, payment_id)
+
+        order_sudo = self._get_checkout_order(tx_sudo)
+        payment_status = (payment_data or {}).get('status')
+        if order_sudo and payment_status in const.DECLINED_STATUSES:
+            self._remember_declined_method(order_sudo, tx_sudo.payment_method_id)
+
+        if use_payment_status and payment_data:
+            PaymentPostProcessing.monitor_transaction(tx_sudo)
+            return request.redirect('/payment/status')
+
+        if order_sudo and (
+            tx_sudo.state in ('cancel', 'error')
+            or (retry_checkout and tx_sudo.state not in ('authorized', 'done'))
+        ):
+            checkout_result = {
+                'STATUS_CANCELLED': 'cancelled',
+                'STATUS_FAILED': 'failed',
+                'STATUS_DECLINED': 'declined',
+            }.get(payment_status, checkout_result)
+            if checkout_result:
+                request.session[const.PAYMENT_RESULT_SESSION_KEY] = checkout_result
+            return request.redirect('/shop/payment')
 
         return request.redirect(tx_sudo.landing_route or '/payment/status')
 
@@ -170,12 +211,42 @@ class PayeverController(http.Controller):
 
         :param tx_sudo: The `payment.transaction` record, in sudo mode.
         :param str payment_id: The payever payment ID from the callback.
-        :return: None
+        :return: The verified payever payment data, or None when it was rejected.
+        :rtype: dict | None
         """
         payment_data = tx_sudo._payever_fetch_payment_data(payment_id)
         if not payment_data or not tx_sudo._payever_payment_data_matches(payment_data):
-            return
+            return None
         tx_sudo._process('payever', payment_data)
+        return payment_data
+
+    @staticmethod
+    def _get_checkout_order(tx_sudo):
+        """Return the draft webshop cart of the current session paid by *tx_sudo*.
+
+        The order must be the cart of the visitor's session so that a public
+        return URL cannot be used to resume somebody else's checkout.
+        """
+        if 'sale_order_ids' not in tx_sudo._fields:
+            return None
+        cart_id = request.session.get('sale_order_id')
+        order_sudo = tx_sudo.sale_order_ids.filtered(
+            lambda order: order.id == cart_id and order.state == 'draft'
+        )
+        return order_sudo[:1] or None
+
+    @staticmethod
+    def _remember_declined_method(order_sudo, payment_method):
+        """Hide *payment_method* from the payment step of *order_sudo*."""
+        if not payment_method or payment_method.code == 'payever':
+            return
+        declined = dict(request.session.get(const.DECLINED_METHODS_SESSION_KEY) or {})
+        order_key = str(order_sudo.id)
+        method_ids = list(declined.get(order_key) or [])
+        if payment_method.id not in method_ids:
+            method_ids.append(payment_method.id)
+        declined[order_key] = method_ids
+        request.session[const.DECLINED_METHODS_SESSION_KEY] = declined
 
     @staticmethod
     def _get_tx_or_none(reference):
