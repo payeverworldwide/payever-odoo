@@ -161,7 +161,7 @@ class PaymentProviderPayever(models.Model):
     # -------------------------------------------------------------------------
 
     def action_sync_payever_methods(self):
-        """Fetch available payment methods from payever, create missing ones, and update logos."""
+        """Fetch payment methods from payever, create/update them, and hide ones no longer returned."""
         self.ensure_one()
         try:
             methods_data = self._payever_list_payment_options()
@@ -186,34 +186,49 @@ class PaymentProviderPayever(models.Model):
                 },
             }
 
+        returned_codes = set()
+        limit_currency = self.payever_currency_id or self.company_id.currency_id
         for method_info in methods_data:
             code = method_info.get('payment_method', '')
             name = method_info.get('name', code)
             if not code:
                 continue
+            returned_codes.add(code)
 
             image_b64 = self._payever_download_logo(method_info.get('logo'), code)
-
-            existing = self.env['payment.method'].with_context(active_test=False).search(
-                [('code', '=', code)], limit=1
-            )
-            if existing:
-                # Only fill in a logo when the method has none, so that logos of
-                # methods shared with other providers are left untouched.
-                vals = {'provider_ids': [Command.link(self.id)]}
-                if image_b64 and not existing.image:
-                    vals['image'] = image_b64
-                existing.write(vals)
-            else:
-                self.env['payment.method'].create({
+            country_codes = {
+                str(country_code).upper()
+                for country_code in method_info.get('countries', [])
+                if country_code
+            }
+            countries = self.env['res.country'].search([('code', 'in', list(country_codes))])
+            unknown_country_codes = country_codes - set(countries.mapped('code'))
+            if unknown_country_codes:
+                _logger.warning(
+                    'payever: method %s returned unknown country codes: %s',
+                    code, ', '.join(sorted(unknown_country_codes)),
+                )
+            method_options = method_info.get('options') or {}
+            business_type = self._payever_parse_business_type(method_info, method_options)
+            self._payever_upsert_payment_method(
+                code,
+                image_b64,
+                {
                     'name': name,
-                    'code': code,
                     'active': True,
-                    'image': image_b64 or self._payever_fallback_logo(),
-                    'support_refund': 'partial',
-                    'support_manual_capture': 'partial',
-                    'provider_ids': [Command.link(self.id)],
-                })
+                    'payever_synced': True,
+                    'payever_currency_id': limit_currency.id,
+                    'payever_minimum_amount': float(method_info.get('min') or 0.0),
+                    'payever_maximum_amount': float(method_info.get('max') or 0.0),
+                    'payever_country_ids': [Command.set(countries.ids)],
+                    'payever_business_type': business_type,
+                    'payever_is_redirect_method': (
+                        method_options.get('is_redirect_method') is True
+                    ),
+                },
+            )
+
+        self._payever_disable_missing_methods(returned_codes)
 
         return {
             'type': 'ir.actions.client',
@@ -224,6 +239,85 @@ class PaymentProviderPayever(models.Model):
                 'type': 'success',
             },
         }
+
+    def _payever_parse_business_type(self, method_info, method_options):
+        """Return b2c, b2b or mixed from the methods API payload."""
+        raw = method_options.get('business_type')
+        if raw is None:
+            raw = method_info.get('business_type')
+        business_type = str(raw or 'mixed').lower()
+        if business_type not in ('b2c', 'b2b', 'mixed'):
+            _logger.warning(
+                'payever: method %s returned unknown business type %r; using mixed.',
+                method_info.get('payment_method'), business_type,
+            )
+            return 'mixed'
+        return business_type
+
+    def _payever_upsert_payment_method(self, code, image_b64, sync_vals):
+        """Create or update a payment method from payever sync data.
+
+        Synced metadata is always overwritten with the latest API values,
+        including when the method already exists. Force Redirect defaults to
+        enabled for redirect methods and is not turned off again by later syncs.
+        """
+        self.ensure_one()
+        Method = self.env['payment.method'].sudo().with_context(
+            active_test=False, lang=False,
+        )
+        existing = Method.search(
+            [('code', '=', code), ('payever_synced', '=', True)], limit=1,
+        ) or Method.search([('code', '=', code)], limit=1)
+
+        if existing:
+            # Only fill in a logo when the method has none, so that logos of
+            # methods shared with other providers are left untouched.
+            vals = {
+                'provider_ids': [Command.link(self.id)],
+                **sync_vals,
+            }
+            if image_b64 and not existing.image:
+                vals['image'] = image_b64
+            if (
+                vals.get('payever_is_redirect_method')
+                and not existing.payever_force_redirect
+            ):
+                vals['payever_force_redirect'] = True
+            existing.write(vals)
+            return existing
+
+        vals = {
+            'code': code,
+            'image': image_b64 or self._payever_fallback_logo(),
+            'support_refund': 'partial',
+            'support_manual_capture': 'partial',
+            'provider_ids': [Command.link(self.id)],
+            **sync_vals,
+        }
+        if vals.get('payever_is_redirect_method'):
+            vals['payever_force_redirect'] = True
+        return Method.create(vals)
+
+    def _payever_disable_missing_methods(self, returned_codes):
+        """Unlink methods this provider had that payever did not return.
+
+        Methods that are only used by payever are archived so they leave checkout.
+        Methods still used by another provider stay active and are only detached
+        from payever. An empty ``returned_codes`` set is ignored so a malformed
+        payload cannot wipe the method list.
+        """
+        self.ensure_one()
+        if not returned_codes:
+            return
+
+        linked = self.env['payment.method'].with_context(active_test=False).search(
+            [('provider_ids', 'in', self.id)]
+        )
+        for method in linked.filtered(lambda m: m.code not in returned_codes):
+            vals = {'provider_ids': [Command.unlink(self.id)]}
+            if not (method.provider_ids - self):
+                vals['active'] = False
+            method.write(vals)
 
     def _payever_fallback_logo(self):
         """Return the module icon as base64, used when a method has no remote logo."""
@@ -254,6 +348,23 @@ class PaymentProviderPayever(models.Model):
         """Return the API base URL for the current mode (test/live)."""
         self.ensure_one()
         return const.SANDBOX_URL if self.state == 'test' else const.LIVE_URL
+
+    def _payever_get_locale(self, partner=None):
+        """Return the two-letter shop/customer language used by payever."""
+        self.ensure_one()
+        language_code = partner.lang if partner and partner.lang else False
+        if not language_code and self.env.registry.get('website'):
+            website = self.env['website'].search(
+                [('company_id', '=', self.company_id.id)], limit=1
+            )
+            language_code = website.default_lang_id.code if website else False
+        language_code = (
+            language_code
+            or self.company_id.partner_id.lang
+            or self.env.context.get('lang')
+            or 'en'
+        )
+        return language_code.replace('_', '-').split('-', 1)[0].lower()
 
     def _payever_get_access_token(self):
         """Return a cached or freshly-fetched OAuth2 access token.
@@ -433,7 +544,11 @@ class PaymentProviderPayever(models.Model):
         """POST /api/v2/payment/methods — list available payment options."""
         response = self._payever_make_request(
             '/api/v2/payment/methods', method='POST',
-            data={'channel': 'api', 'currency': self.payever_currency_id.name or 'EUR'},
+            data={
+                'channel': 'api',
+                'currency': (self.payever_currency_id or self.company_id.currency_id).name,
+                'locale': self._payever_get_locale(),
+            },
             silent_errors=True,
         )
         if response.get('error'):

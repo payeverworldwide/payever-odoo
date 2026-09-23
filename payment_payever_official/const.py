@@ -34,3 +34,9 @@ PAYEVER_TO_ODOO_STATUS = {
     'STATUS_CANCELLED': 'cancel',
     'STATUS_REFUNDED': 'done',
 }
+
+# Only an explicit decline hides the method for the rest of the checkout
+# session. Failed and cancelled methods remain available for another attempt.
+DECLINED_STATUSES = ('STATUS_DECLINED',)
+DECLINED_METHODS_SESSION_KEY = 'payever_declined_method_ids'
+PAYMENT_RESULT_SESSION_KEY = 'payever_payment_result'
